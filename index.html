@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sugestão de Compras</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 24px;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        th {
+            background-color: #0f172a;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f3f4f6;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2563eb;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        textarea {
+            min-height: 150px;
+            font-family: monospace;
+        }
+
+        #export-buttons button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        #export-buttons button:focus {
+            outline: 2px solid rgba(37, 99, 235, 0.7);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-slate-100 font-sans text-slate-900">
+
+    <header class="bg-slate-900 text-white p-4 shadow-xl flex flex-wrap justify-between items-center gap-4 border-b-4 border-blue-600">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-2 rounded-lg shadow-inner">
+                <span class="text-xl font-black leading-none">∑</span>
+            </div>
+            <div>
+                <h1 class="text-lg font-black tracking-tighter uppercase leading-none">Sugestão de Compras</h1>
+                <p class="text-[10px] text-blue-400 font-mono font-bold tracking-widest uppercase italic">Gestão de Estoque • Curva ABC</p>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <p class="text-gray-500 mb-6 border-b pb-4">
+            <strong>APLICATIVO INTERATIVO:</strong> Importe seus arquivos CSV de Consumo e Saldo Atual para processamento.
+        </p>
+
+        <div class="mb-8 p-6 bg-gray-50 border border-gray-200 rounded-lg">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">1. Entrada e Atualização de Dados</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="consumption-data" class="block text-sm font-medium text-gray-700 mb-2">Histórico de Consumo (Formato CSV)</label>
+                    <div class="mb-2 flex items-center gap-2 text-sm text-gray-600">
+                        <span class="whitespace-nowrap">Importar arquivo:</span>
+                        <input type="file" id="consumption-file" accept=".csv,text/csv,.txt" class="text-sm" onchange="handleConsumptionFile(event)" />
+                    </div>
+                    <textarea id="consumption-data" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Cole os dados ou importe o arquivo..."></textarea>
+                </div>
+
+                <div>
+                    <label for="stock-data" class="block text-sm font-medium text-gray-700 mb-2">Saldo Atual de Estoque (Formato CSV)</label>
+                    <div class="mb-2 flex items-center gap-2 text-sm text-gray-600">
+                        <span class="whitespace-nowrap">Importar arquivo:</span>
+                        <input type="file" id="stock-file" accept=".csv,text/csv,.txt" class="text-sm" onchange="handleStockFile(event)" />
+                    </div>
+                    <textarea id="stock-data" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Cole os dados ou importe o arquivo..."></textarea>
+                </div>
+
+                <button onclick="processData()" class="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition duration-150">
+                    Processar Dados e Gerar Análise
+                </button>
+            </div>
+
+            <div id="status-message" class="mb-4 p-3 rounded-lg text-sm bg-blue-100 text-blue-800 hidden">
+                Processando dados...
+            </div>
+
+            <div id="suggestion-output" class="hidden">
+                
+                <h2 class="text-xl font-semibold mb-4 text-gray-700 mt-8">2. Sugestão de Compra (Ações Necessárias)</h2>
+                <p class="text-sm text-gray-600 mb-4">* Itens cujo saldo atual <strong>NÃO cobre</strong> a média mensal de consumo. Requer atenção.</p>
+                <div class="overflow-x-auto mb-8">
+                    <table class="min-w-full divide-y divide-gray-200 rounded-lg overflow-hidden">
+                        <thead>
+                            <tr>
+                                <th class="rounded-tl-lg bg-slate-900">Giro</th>
+                                <th class="bg-slate-900">Código Material</th>
+                                <th class="bg-slate-900">Descrição</th>
+                                <th class="bg-slate-900 text-center">Consumo Total</th>
+                                <th class="bg-slate-900 text-center">Meses ativos</th>
+                                <th class="bg-slate-900 text-center">Média Mensal</th>
+                                <th class="bg-slate-900 text-center">Saldo Atual</th>
+                                <th class="bg-slate-900 text-center text-xl">Comprar</th>
+                                <th class="rounded-tr-lg bg-slate-900 text-center text-xl">Risco</th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchase-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+
+                <h2 class="text-xl font-semibold mb-4 text-slate-700 mt-12">3. Estoque Saudável (Nenhuma Ação Necessária)</h2>
+               <p class="text-sm text-gray-600 mb-4">* A lista é filtrada para mostrar apenas itens com consumo em <strong>5 ou mais meses</strong>. Ordenado por <strong>Giro (ABC)</strong> e urgência de <strong>Compra</strong>.</p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 rounded-lg overflow-hidden">
+                        <thead>
+                            <tr>
+                                <th class="rounded-tl-lg bg-slate-800">Giro</th>
+                                <th class="bg-slate-800">Código Material</th>
+                                <th class="bg-slate-800">Descrição</th>
+                                <th class="bg-slate-800 text-center">Consumo Total</th>
+                                <th class="bg-slate-800 text-center">Meses ativos</th>
+                                <th class="bg-slate-800 text-center">Média Mensal</th>
+                                <th class="bg-slate-800 text-center">Saldo Atual</th>
+                                <th class="bg-slate-800 text-center text-lg">Comprar</th>
+                                <th class="rounded-tr-lg bg-slate-800 text-center text-lg">Situação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="healthy-body" class="bg-white divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="export-buttons" class="mt-6 flex flex-wrap gap-3 hidden">
+                <button type="button" onclick="exportToPDF()" class="bg-slate-900 hover:bg-slate-800 text-white font-semibold px-4 py-2 rounded-lg shadow-md transition">📄 Exportar Relatório em PDF</button>
+                <button type="button" onclick="exportToCSV()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md transition">📊 Exportar Dados em CSV</button>
+            </div>
+
+            <div id="no-purchase-message" class="mb-4 mt-6 p-4 rounded-lg text-base bg-green-100 text-green-800 hidden">
+                Excelente! Todo o estoque está cobrindo as médias de consumo mensais.
+            </div>
+
+            <div id="ai-actions" class="mt-12 pt-6 border-t border-gray-200 hidden">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">4. Recursos de Inteligência Artificial</h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100 flex flex-col justify-between shadow-sm">
+                        <div>
+                            <h3 class="font-bold text-blue-900 mb-2 flex items-center gap-2"><span class="text-lg">📊</span> Visão Geral de Risco</h3>
+                            <p class="text-sm text-blue-700 mb-4">Gera um plano de ação rápido para todos os itens com estoque zerado (Risco Alto).</p>
+                        </div>
+                        <button id="btn-analysis" onclick="performRiskAnalysis()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition">✨ Análise de Risco de Falta</button>
+                    </div>
+
+                    <div class="bg-indigo-50/50 p-5 rounded-xl border border-indigo-100 flex flex-col justify-between shadow-sm">
+                        <div>
+                            <h3 class="font-bold text-indigo-900 mb-2 flex items-center gap-2"><span class="text-lg">🏬</span> Pesquisa de Mercado</h3>
+                            <p class="text-sm text-indigo-700 mb-3">Selecione um material necessitado para buscar fornecedores no Brasil.</p>
+                            <select id="supplier-item-select" class="w-full border border-indigo-200 rounded-lg p-2.5 mb-4 bg-white text-sm text-gray-700 shadow-sm" disabled>
+                                <option value="">Processe os dados primeiro...</option>
+                            </select>
+                        </div>
+                        <button id="btn-suppliers" onclick="findSupplierSuggestion()" class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg shadow transition" disabled>✨ Buscar Fornecedores</button>
+                    </div>
+                </div>
+
+                <div id="analysis-output" class="mt-6 p-4 bg-white border border-gray-200 rounded-lg shadow-md hidden">
+                    <h3 class="font-bold text-lg text-gray-800">Resultado da Análise de Risco de Estoque:</h3>
+                    <div id="analysis-text" class="mt-2 text-gray-700"></div>
+                    <div id="analysis-loader" class="flex justify-center items-center p-4 hidden"><div class="loader"></div><span class="ml-3 text-sm text-gray-600">Gerando análise...</span></div>
+                </div>
+
+                <div id="supplier-output" class="mt-6 p-4 bg-white border border-gray-200 rounded-lg shadow-md hidden">
+                    <div id="supplier-content"></div>
+                    <div id="supplier-loader" class="flex justify-center items-center p-4 hidden"><div class="loader"></div><span class="ml-3 text-sm text-gray-600">Buscando fornecedores...</span></div>
+                </div>
+            </div>
+
+            <div id="error-message" class="mb-4 p-3 rounded-lg text-sm bg-red-100 text-red-800 hidden">Ocorreu um erro ao processar os dados.</div>
+        </div>
+    </div>
+
+    <script>
+        console.log("VERSÃO: 7.0 - Sugestão de Compras Sanitizado");
+
+        // IMPORTANTE: Para o GitHub, NUNCA suba sua chave real.
+        const apiKey = "[COLOQUE_SUA_API_KEY_AQUI]"; // Substitua em ambiente local
+        
+        const API_URL_TEXT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
+        const API_URL_SEARCH = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
+
+        let materialAverageData = [];
+        let itemsToBuy = [];
+        let itemsHealthy = []; 
+        let currentStockData = {};
+
+        function normalizeCode(code) {
+            let c = String(code).trim().toUpperCase();
+            c = c.replace(/^0+/, '');
+            return c === '' ? '0' : c;
+        }
+
+        function parseSAPNumber(str) {
+            let s = String(str).trim();
+            if (!s) return 0;
+            let isTrailingNegative = s.endsWith('-');
+            let isLeadingNegative = s.startsWith('-');
+            s = s.replace(/^-/, '').replace(/-$/, '').replace(/\./g, '').replace(',', '.');
+            let val = parseFloat(s) || 0;
+            return (isTrailingNegative || isLeadingNegative) ? -val : val;
+        }
+
+        function parseCSV(csvText) {
+            if (!csvText || !csvText.trim()) return [];
+            return Papa.parse(csvText.trim(), { header: true, skipEmptyLines: true, transformHeader: h => h.trim(), transform: v => v.trim() }).data;
+        }
+
+        function parseStockList(stockText) {
+            const stockMap = {};
+            if (!stockText || !stockText.trim()) return stockMap;
+            const data = Papa.parse(stockText.trim(), { header: false, skipEmptyLines: true }).data;
+            let startIndex = 0;
+            if (data.length > 0 && data[0].length >= 3) {
+                if (String(data[0][0]).toLowerCase().includes('material') || String(data[0][0]).toLowerCase().includes('código')) startIndex = 1;
+            }
+            for (let i = startIndex; i < data.length; i++) {
+                if (data[i].length >= 3) {
+                    const code = normalizeCode(data[i][0]);
+                    if (!code || code.includes('TOTAL') || code.includes('*')) continue;
+                    stockMap[code] = parseSAPNumber(data[i][2]);
+                }
+            }
+            return stockMap;
+        }
+
+        function loadFileIntoTextarea(file, textareaId) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => document.getElementById(textareaId).value = e.target.result;
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function handleConsumptionFile(event) { loadFileIntoTextarea(event.target.files[0], 'consumption-data'); }
+        function handleStockFile(event) { loadFileIntoTextarea(event.target.files[0], 'stock-data'); }
+
+        function compareABC(a, b) {
+            const order = { 'A': 3, 'B': 2, 'C': 1 };
+            return order[b.giroABC] - order[a.giroABC];
+        }
+
+        function calculateABCAnalysis(data) {
+            if (!data || data.length === 0) return data;
+            const grandTotal = data.reduce((sum, item) => sum + item.totalConsumido, 0);
+            if (grandTotal === 0) return data.map(item => ({ ...item, giroABC: 'C' }));
+            const sortedData = [...data].sort((a, b) => b.totalConsumido - a.totalConsumido);
+            let cumulativePercentage = 0;
+            const abcClassifiedData = [];
+            for (const item of sortedData) {
+                cumulativePercentage += item.totalConsumido / grandTotal;
+                let giroABC = cumulativePercentage <= 0.80 ? 'A' : (cumulativePercentage <= 0.95 ? 'B' : 'C');
+                abcClassifiedData.push({ ...item, giroABC: giroABC });
+            }
+            return abcClassifiedData;
+        }
+
+        function calculateMonthlyAverage(data) {
+            const materialStats = {};
+            const allMonths = new Set();
+            data.forEach(row => {
+                const keys = Object.keys(row);
+                const monthKey = keys.find(k => k.toLowerCase().includes('mês') || k.toLowerCase().includes('mes')) || keys[0];
+                const materialKey = keys.find(k => k.toLowerCase() === 'material' || k.toLowerCase() === 'código') || keys[1];
+                const descKey = keys.find(k => k.toLowerCase().includes('texto') || k.toLowerCase().includes('descri')) || keys[2];
+                const qtdKey = keys.find(k => k.toLowerCase().includes('qtd') || k.toLowerCase().includes('quant')) || keys[3];
+
+                const rawMonth = String(row[monthKey] || '').trim().toUpperCase();
+                const rawCode = String(row[materialKey] || '').trim().toUpperCase();
+
+                if (!rawCode || rawCode.includes('TOTAL') || rawCode.includes('*')) return;
+                if (!rawMonth || rawMonth.includes('TOTAL') || rawMonth.includes('*') || rawMonth === 'RESULTADO') return;
+
+                const materialCode = normalizeCode(rawCode);
+                allMonths.add(rawMonth);
+                let quantityString = String(row[qtdKey] || '0').trim();
+                if (row.__parsed_extra && row.__parsed_extra.length > 0) {
+                     quantityString = String(row.__parsed_extra[row.__parsed_extra.length - 1]).trim();
+                }
+                const quantity = parseSAPNumber(quantityString);
+
+                if (!materialStats[materialCode]) {
+                    materialStats[materialCode] = { rawTotalQuantity: 0, uniqueMonths: new Set(), description: row[descKey] || 'N/A' };
+                }
+                materialStats[materialCode].rawTotalQuantity += quantity;
+                materialStats[materialCode].uniqueMonths.add(rawMonth);
+            });
+
+            const totalReportMonths = allMonths.size > 0 ? allMonths.size : 1;
+            const averageData = [];
+            for (const code in materialStats) {
+                const stats = materialStats[code];
+                const actualConsumption = Math.abs(stats.rawTotalQuantity);
+                if (actualConsumption === 0) continue;
+                averageData.push({ codigo: code, media: actualConsumption / totalReportMonths, descricao: stats.description, totalConsumido: actualConsumption, mesesUnicos: stats.uniqueMonths.size });
+            }
+            return calculateABCAnalysis(averageData);
+        }
+
+        function calculatePurchaseSuggestion(averageData) {
+            const outputBody = document.getElementById('purchase-body');
+            const healthyBody = document.getElementById('healthy-body');
+            const outputContainer = document.getElementById('suggestion-output');
+            const aiActions = document.getElementById('ai-actions');
+            const exportButtons = document.getElementById('export-buttons');
+            const supplierSelect = document.getElementById('supplier-item-select');
+
+            outputBody.innerHTML = '';
+            healthyBody.innerHTML = '';
+            supplierSelect.innerHTML = '';
+            itemsToBuy = [];
+            itemsHealthy = [];
+
+            const MIN_MONTHS_RECURRENCE = 5;
+
+            const formatNumber = (num) => num.toFixed(2).replace('.', ',').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+
+            averageData.forEach(item => {
+                if (item.mesesUnicos < MIN_MONTHS_RECURRENCE) return;
+
+                const stock = currentStockData[item.codigo] || 0;
+                const buyQuantity = Math.ceil(Math.max(0, item.media - stock));
+
+                if (buyQuantity > 0) {
+                    let risk = stock === 0 ? 'Alto' : (stock < item.media / 2 ? 'Médio' : 'Baixo');
+                    itemsToBuy.push({ ...item, saldo: stock, comprar: buyQuantity, risco: risk });
+                } else {
+                    itemsHealthy.push({ ...item, saldo: stock, comprar: 0, risco: 'OK' });
+                }
+            });
+
+            itemsToBuy.sort((a, b) => compareABC(a, b) !== 0 ? compareABC(a, b) : b.comprar - a.comprar);
+            itemsHealthy.sort((a, b) => compareABC(a, b) !== 0 ? compareABC(a, b) : b.saldo - a.saldo);
+
+            itemsToBuy.forEach((item, index) => {
+                const row = outputBody.insertRow();
+                let riskColor = item.risco === 'Médio' ? 'bg-yellow-100 text-yellow-800' : (item.risco === 'Alto' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800');
+                let giroColor = item.giroABC === 'B' ? 'bg-yellow-500' : (item.giroABC === 'A' ? 'bg-red-600' : 'bg-green-500');
+
+                row.innerHTML = `
+                    <td class="text-center"><span class="px-3 py-1 text-sm font-bold text-white rounded-full ${giroColor}">${item.giroABC}</span></td>
+                    <td class="font-semibold text-gray-900">${item.codigo}</td>
+                    <td class="text-gray-700">${item.descricao}</td>
+                    <td class="text-center">${formatNumber(item.totalConsumido)}</td>
+                    <td class="text-center font-bold">${item.mesesUnicos}</td>
+                    <td class="text-center font-bold">${formatNumber(item.media)}</td>
+                    <td class="text-center font-semibold">${formatNumber(item.saldo)}</td>
+                    <td class="text-center font-bold text-xl text-emerald-600">${item.comprar}</td>
+                    <td class="text-center"><span class="px-2 py-1 text-xs font-semibold rounded-full ${riskColor}">${item.risco}</span></td>
+                `;
+
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = `Curva ${item.giroABC} | ${item.codigo} - ${item.descricao}`;
+                supplierSelect.appendChild(option);
+            });
+
+            itemsHealthy.forEach(item => {
+                const row = healthyBody.insertRow();
+                let giroColor = item.giroABC === 'B' ? 'bg-yellow-500' : (item.giroABC === 'A' ? 'bg-red-600' : 'bg-green-500');
+
+                row.innerHTML = `
+                    <td class="text-center"><span class="px-3 py-1 text-sm font-bold text-white rounded-full ${giroColor}">${item.giroABC}</span></td>
+                    <td class="font-semibold text-gray-600">${item.codigo}</td>
+                    <td class="text-gray-500">${item.descricao}</td>
+                    <td class="text-center text-gray-500">${formatNumber(item.totalConsumido)}</td>
+                    <td class="text-center text-gray-500">${item.mesesUnicos}</td>
+                    <td class="text-center text-gray-600">${formatNumber(item.media)}</td>
+                    <td class="text-center font-semibold text-emerald-700">${formatNumber(item.saldo)}</td>
+                    <td class="text-center font-bold text-gray-400">0</td>
+                    <td class="text-center"><span class="px-2 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800">✓ Seguro</span></td>
+                `;
+            });
+
+            outputContainer.classList.remove('hidden');
+            aiActions.classList.remove('hidden');
+            if (exportButtons) exportButtons.classList.remove('hidden');
+
+            if (itemsToBuy.length > 0) {
+                supplierSelect.disabled = false;
+                document.getElementById('btn-suppliers').disabled = false;
+            } else {
+                supplierSelect.disabled = true;
+                supplierSelect.innerHTML = '<option value="">Nenhum item em falta</option>';
+                document.getElementById('btn-suppliers').disabled = true;
+            }
+            
+            document.getElementById('status-message').classList.add('hidden');
+            document.getElementById('error-message').classList.add('hidden');
+        }
+
+        function exportToCSV() {
+            if (itemsToBuy.length === 0 && itemsHealthy.length === 0) return alert('Sem dados.');
+            const formatNumber = (num) => Number(num).toFixed(2).replace('.', ',');
+            const allExport = [
+                ...itemsToBuy.map(i => ({ 'Tipo': 'FALTA', 'Giro': i.giroABC, 'Código': i.codigo, 'Descrição': i.descricao, 'Média': formatNumber(i.media), 'Estoque': formatNumber(i.saldo), 'Comprar': i.comprar, 'Risco': i.risco })),
+                ...itemsHealthy.map(i => ({ 'Tipo': 'SAUDÁVEL', 'Giro': i.giroABC, 'Código': i.codigo, 'Descrição': i.descricao, 'Média': formatNumber(i.media), 'Estoque': formatNumber(i.saldo), 'Comprar': 0, 'Risco': 'OK' }))
+            ];
+            const csv = Papa.unparse(allExport, { delimiter: ",", quotes: false });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'analise_compras_completa.csv';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
+        function exportToPDF() {
+            if (itemsToBuy.length === 0 && itemsHealthy.length === 0) return alert('Sem dados.');
+            const formatNumber = (num) => Number(num).toFixed(2).replace('.', ',');
+            let rowsBuy = itemsToBuy.map(i => `<tr><td>${i.giroABC}</td><td>${i.codigo}</td><td>${i.descricao}</td><td>${formatNumber(i.media)}</td><td>${formatNumber(i.saldo)}</td><td><strong>${i.comprar}</strong></td><td>${i.risco}</td></tr>`).join('');
+            let rowsHealthy = itemsHealthy.map(i => `<tr><td>${i.giroABC}</td><td>${i.codigo}</td><td>${i.descricao}</td><td>${formatNumber(i.media)}</td><td>${formatNumber(i.saldo)}</td><td>0</td><td>Seguro</td></tr>`).join('');
+            
+            const html = `<!DOCTYPE html><html><head><title>Relatório</title><style>body{font-family:Arial,sans-serif;padding:24px;}table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px;}th,td{border:1px solid #ddd;padding:6px;text-align:center;}th{background-color:#0f172a;color:#fff;}</style></head><body><h1>Plano de Abastecimento</h1><h2>Itens Necessários</h2><table><thead><tr><th>Giro</th><th>Código</th><th>Descrição</th><th>Média</th><th>Estoque</th><th>Comprar</th><th>Risco</th></tr></thead><tbody>${rowsBuy}</tbody></table><h2>Estoque Saudável</h2><table><thead><tr><th>Giro</th><th>Código</th><th>Descrição</th><th>Média</th><th>Estoque</th><th>Comprar</th><th>Situação</th></tr></thead><tbody>${rowsHealthy}</tbody></table></body></html>`;
+            const win = window.open('', '_blank'); win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 500);
+        }
+
+        function processData() {
+            document.getElementById('status-message').classList.remove('hidden');
+            document.getElementById('error-message').classList.add('hidden');
+            document.getElementById('analysis-output').classList.add('hidden');
+            document.getElementById('supplier-output').classList.add('hidden');
+            try {
+                currentStockData = parseStockList(document.getElementById('stock-data').value);
+                materialAverageData = calculateMonthlyAverage(parseCSV(document.getElementById('consumption-data').value));
+                calculatePurchaseSuggestion(materialAverageData);
+            } catch (error) {
+                document.getElementById('status-message').classList.add('hidden');
+                document.getElementById('error-message').classList.remove('hidden');
+            }
+        }
+
+        async function performRiskAnalysis() {
+            const outputDiv = document.getElementById('analysis-output');
+            const loaderDiv = document.getElementById('analysis-loader');
+            const analysisTextDiv = document.getElementById('analysis-text');
+            outputDiv.classList.remove('hidden'); analysisTextDiv.innerHTML = ''; loaderDiv.classList.remove('hidden');
+
+            const highRiskItems = itemsToBuy.filter(item => item.risco === 'Alto');
+            if (highRiskItems.length === 0) {
+                analysisTextDiv.innerHTML = `<div class="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-lg"><span class="text-3xl">🎉</span><p class="text-emerald-800 font-medium">Estoque 100% Coberto! Nenhum item em risco crítico (Estoque Zerado).</p></div>`;
+                loaderDiv.classList.add('hidden'); return;
+            }
+
+            let itemsHtml = '<ul class="space-y-3 mt-4 max-h-60 overflow-y-auto pr-2">';
+            highRiskItems.forEach(item => {
+                let badgeClass = item.giroABC === 'A' ? 'bg-red-500 text-white' : (item.giroABC === 'B' ? 'bg-yellow-500 text-white' : 'bg-slate-400 text-white');
+                itemsHtml += `<li class="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-white border border-gray-200 rounded-lg shadow-sm"><div class="flex items-center gap-3"><span class="px-2 py-1 text-xs font-bold rounded ${badgeClass}">Curva ${item.giroABC}</span><span class="font-bold text-gray-800">${item.codigo}</span><span class="text-gray-600 text-sm truncate max-w-xs">${item.descricao}</span></div><div class="text-sm font-bold text-red-700 bg-red-100 px-3 py-1 rounded-full">Falta: ${item.comprar} un</div></li>`;
+            });
+            itemsHtml += '</ul>';
+
+            const promptList = highRiskItems.map(item => `${item.codigo} (${item.descricao}) - Curva ${item.giroABC}`).join(', ');
+            const payload = {
+                contents: [{ parts: [{ text: `Temos estoque zerado destes itens: ${promptList}. Escreva uma recomendação de ação logística urgente (máximo 3 linhas).` }] }],
+                systemInstruction: { parts: [{ text: "Você é um especialista em suprimentos. Retorne apenas o texto da recomendação, sem saudações e sem usar formatação markdown." }] }
+            };
+
+            try {
+                const result = await fetchWithRetry(API_URL_TEXT, payload);
+                let aiAdvice = result.candidates?.[0]?.content?.parts?.[0]?.text || "Recomendamos contatar os fornecedores urgentemente.";
+                aiAdvice = aiAdvice.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
+
+                analysisTextDiv.innerHTML = `
+                    <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                        <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2">🚨 Itens Críticos (Estoque Zerado)</h4>
+                        ${itemsHtml}
+                        <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-4">
+                            <div class="bg-blue-100 p-2 rounded-lg text-xl">💡</div>
+                            <div><h5 class="font-bold text-blue-900 mb-1">Ação Urgente Recomendada:</h5><p class="text-blue-800 text-sm leading-relaxed">${aiAdvice}</p></div>
+                        </div>
+                    </div>`;
+            } catch (error) { analysisTextDiv.innerHTML = `<p class="text-red-600">Erro na API.</p>`; } finally { loaderDiv.classList.add('hidden'); }
+        }
+
+        async function findSupplierSuggestion() {
+            const selectElement = document.getElementById('supplier-item-select');
+            const selectedIndex = selectElement.value;
+            if (selectedIndex === "") return alert("Selecione um material.");
+
+            const targetItem = itemsToBuy[selectedIndex];
+            const outputDiv = document.getElementById('supplier-output');
+            const loaderDiv = document.getElementById('supplier-loader');
+            const contentDiv = document.getElementById('supplier-content');
+
+            outputDiv.classList.remove('hidden'); contentDiv.innerHTML = ''; loaderDiv.classList.remove('hidden');
+
+            const payload = {
+                contents: [{ parts: [{ text: `Encontre 3 grandes distribuidores ou fabricantes no Brasil, na região de São Paulo, para o produto: ${targetItem.descricao}. Retorne uma lista simples (Nome e Breve Atuação).` }] }],
+                systemInstruction: { parts: [{ text: "Você é um agente de Sourcing estruturado. Responda apenas com o texto corrido em tópicos claros (sem markdown como asteriscos), focando em nomes corporativos." }] },
+                tools: [{ "google_search": {} }]
+            };
+
+            try {
+                const result = await fetchWithRetry(API_URL_SEARCH, payload);
+                let aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível carregar as sugestões.";
+                aiText = aiText.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
+
+                const sources = result.candidates?.[0]?.groundingMetadata?.groundingAttributions || [];
+                let sourcesHtml = '';
+                if (sources.length > 0) {
+                    sourcesHtml += '<div class="mt-4 pt-3 border-t border-indigo-100"><span class="text-xs font-bold text-indigo-900 block mb-1">Fontes Google Search:</span><ul class="list-disc list-inside text-xs text-indigo-700">';
+                    sources.forEach(s => { if (s.web?.uri) sourcesHtml += `<li><a href="${s.web.uri}" target="_blank" class="underline hover:text-indigo-950">${s.web.title || s.web.uri}</a></li>`; });
+                    sourcesHtml += '</ul></div>';
+                }
+
+                contentDiv.innerHTML = `
+                    <div class="bg-indigo-50/50 p-5 rounded-xl border border-indigo-100 shadow-sm">
+                        <h4 class="font-bold text-indigo-950 mb-3 flex items-center gap-2">🏬 Distribuidores Recomendados</h4>
+                        <div class="mb-4 p-3 bg-white border border-indigo-100 rounded-lg text-sm">
+                            <span class="bg-indigo-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Giro ${targetItem.giroABC}</span>
+                            <strong class="text-gray-900">${targetItem.codigo}</strong> — <span class="text-gray-600">${targetItem.descricao}</span>
+                        </div>
+                        <div class="text-gray-700 text-sm bg-white p-4 rounded-lg border border-gray-100 whitespace-pre-line leading-relaxed shadow-inner">${aiText}</div>
+                        ${sourcesHtml}
+                    </div>`;
+            } catch (error) { contentDiv.innerHTML = `<p class="text-red-600">Erro ao processar busca.</p>`; } finally { loaderDiv.classList.add('hidden'); }
+        }
+
+        async function fetchWithRetry(url, payload, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (response.ok) return await response.json();
+                    if (response.status === 429 && i < retries - 1) { await new Promise(res => setTimeout(res, delay)); delay *= 2; } 
+                    else throw new Error("API error");
+                } catch (error) { if (i === retries - 1) throw error; }
+            }
+        }
+    </script>
+</body>
+</html>
